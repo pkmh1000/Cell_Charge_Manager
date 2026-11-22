@@ -1,0 +1,6 @@
+{
+  "name": "CellKeep 蓄電筆記",
+  "description": "電池週期保養、多張位置照片循跡與日週月年充電排程管理 PWA",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
