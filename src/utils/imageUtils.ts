@@ -1,39 +1,79 @@
-export async function compressImageFile(file: File, maxDimension = 1280, quality = 0.82): Promise<string> {
+export interface CompressedPhotoPair {
+  dataUrl: string;
+  thumbDataUrl: string;
+}
+
+let cachedWebpSupport: boolean | null = null;
+
+function supportsWebPEncode(): boolean {
+  if (cachedWebpSupport !== null) return cachedWebpSupport;
+  try {
+    const c = document.createElement('canvas');
+    c.width = 2;
+    c.height = 2;
+    cachedWebpSupport = c.toDataURL('image/webp', 0.8).startsWith('data:image/webp');
+  } catch {
+    cachedWebpSupport = false;
+  }
+  return cachedWebpSupport;
+}
+
+function renderScaledDataUrl(
+  img: HTMLImageElement,
+  maxDimension: number,
+  quality: number
+): string {
+  const { width, height } = img;
+  let targetW = width;
+  let targetH = height;
+
+  if (width > maxDimension || height > maxDimension) {
+    if (width >= height) {
+      targetW = maxDimension;
+      targetH = Math.round((height * maxDimension) / width);
+    } else {
+      targetH = maxDimension;
+      targetW = Math.round((width * maxDimension) / height);
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, targetW);
+  canvas.height = Math.max(1, targetH);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const mime = supportsWebPEncode() ? 'image/webp' : 'image/jpeg';
+  return canvas.toDataURL(mime, quality);
+}
+
+export async function compressImageToPair(
+  source: File | string,
+  fullMaxDim = 1080,
+  fullQuality = 0.76,
+  thumbMaxDim = 280,
+  thumbQuality = 0.68
+): Promise<CompressedPhotoPair> {
+  const dataSrc =
+    typeof source === 'string'
+      ? source
+      : await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error('無法讀取圖片檔案'));
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(source);
+        });
+
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('無法讀取圖片檔案'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('圖片格式無法解析'));
-      img.onload = () => {
-        const { width, height } = img;
-        let targetW = width;
-        let targetH = height;
-
-        if (width > maxDimension || height > maxDimension) {
-          if (width >= height) {
-            targetW = maxDimension;
-            targetH = Math.round((height * maxDimension) / width);
-          } else {
-            targetH = maxDimension;
-            targetW = Math.round((width * maxDimension) / height);
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(reader.result as string);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, targetW, targetH);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.src = reader.result as string;
+    const img = new Image();
+    img.onerror = () => reject(new Error('圖片格式無法解析'));
+    img.onload = () => {
+      const full = renderScaledDataUrl(img, fullMaxDim, fullQuality) || dataSrc;
+      const thumb = renderScaledDataUrl(img, thumbMaxDim, thumbQuality) || full;
+      resolve({ dataUrl: full, thumbDataUrl: thumb });
     };
-    reader.readAsDataURL(file);
+    img.src = dataSrc;
   });
 }
 
@@ -46,4 +86,17 @@ export async function urlToDataUrl(url: string): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+export function estimateDataUrlBytes(dataUrl: string): number {
+  const commaIdx = dataUrl.indexOf(',');
+  if (commaIdx === -1) return 0;
+  const base64Len = dataUrl.length - commaIdx - 1;
+  return Math.round((base64Len * 3) / 4);
+}
+
+export function formatBytesCompact(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }

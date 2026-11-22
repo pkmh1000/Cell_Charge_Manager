@@ -114,15 +114,14 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
                 >
                   <img
                     src={activePhoto.dataUrl}
-                    alt={activePhoto.caption || item.name}
+                    alt={item.name}
                     referrerPolicy="no-referrer"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
-                  {activePhoto.caption && (
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/45 to-transparent px-4 py-3">
-                      <p className="text-sm font-medium text-white">{activePhoto.caption}</p>
-                    </div>
-                  )}
+                  <span className="absolute bottom-2.5 right-2.5 rounded-lg bg-black/65 px-2.5 py-1 text-xs font-medium text-white tabular-nums">
+                    {activePhotoIndex + 1} / {item.photos.length}
+                  </span>
                 </div>
 
                 {item.photos.length > 1 && (
@@ -139,9 +138,11 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
                         }`}
                       >
                         <img
-                          src={photo.dataUrl}
-                          alt={photo.caption || `照片 ${index + 1}`}
+                          src={photo.thumbDataUrl || photo.dataUrl}
+                          alt={`照片 ${index + 1}`}
                           referrerPolicy="no-referrer"
+                          loading="lazy"
+                          decoding="async"
                           className="h-full w-full object-cover"
                         />
                         <span className="absolute top-1 left-1 rounded bg-black/65 px-1.5 text-[10px] font-medium text-white tabular-nums">
@@ -171,6 +172,11 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
             <p className="text-base font-medium text-slate-900 dark:text-slate-100">
               {item.location}
             </p>
+            {item.tags && item.tags.length > 0 && (
+              <p className="text-xs text-teal-700 dark:text-teal-400 pt-1">
+                標籤：{item.tags.map((t) => `#${t}`).join(' · ')}
+              </p>
+            )}
             {item.notes && (
               <p className="text-sm text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-800 mt-2">
                 {item.notes}

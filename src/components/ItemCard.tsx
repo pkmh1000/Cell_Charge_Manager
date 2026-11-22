@@ -27,7 +27,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
   const urgency = getUrgencyInfo(item.nextChargeDate);
   const progress = getCycleProgressPercent(item.startDate, item.nextChargeDate);
   const tags = getDateGranularityTags(item.nextChargeDate);
-  const coverPhoto = item.photos[0]?.dataUrl;
+  const coverPhoto = item.photos[0]?.thumbDataUrl || item.photos[0]?.dataUrl;
 
   const statusConfig = {
     overdue: {
@@ -76,6 +76,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
                 src={coverPhoto}
                 alt={item.name}
                 referrerPolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
                 className="h-full w-full object-cover"
               />
             ) : (
@@ -111,6 +113,12 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
               <MapPin className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400 mt-0.5" />
               <span>{item.location}</span>
             </p>
+
+            {item.tags && item.tags.length > 0 && (
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500 truncate">
+                {item.tags.map((t) => `#${t}`).join(' · ')}
+              </p>
+            )}
           </div>
         </div>
 

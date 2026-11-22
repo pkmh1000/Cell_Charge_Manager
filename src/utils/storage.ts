@@ -3,7 +3,7 @@ import { addDays, addInterval, getTodayStr } from './dateCycle';
 import demoPowerbankImg from '../assets/images/demo_powerbank_1795359621322.jpg';
 import demoDrawerImg from '../assets/images/demo_drawer_location_1795359622125.jpg';
 import demoCameraImg from '../assets/images/demo_camera_1795359621603.jpg';
-import { urlToDataUrl } from './imageUtils';
+import { compressImageToPair, estimateDataUrlBytes, urlToDataUrl } from './imageUtils';
 
 const DB_NAME = 'cellkeep-db';
 const DB_VERSION = 1;
@@ -138,10 +138,19 @@ export async function createDemoItems(): Promise<BatteryItem[]> {
   const today = getTodayStr();
   const nowIso = new Date().toISOString();
 
-  const [pbImg, drawerImg, camImg] = await Promise.all([
-    urlToDataUrl(demoPowerbankImg).catch(() => demoPowerbankImg),
-    urlToDataUrl(demoDrawerImg).catch(() => demoDrawerImg),
-    urlToDataUrl(demoCameraImg).catch(() => demoCameraImg),
+  const loadPair = async (url: string) => {
+    try {
+      const raw = await urlToDataUrl(url);
+      return await compressImageToPair(raw);
+    } catch {
+      return { dataUrl: url, thumbDataUrl: url };
+    }
+  };
+
+  const [pbPair, drawerPair, camPair] = await Promise.all([
+    loadPair(demoPowerbankImg),
+    loadPair(demoDrawerImg),
+    loadPair(demoCameraImg),
   ]);
 
   const item1Start = addDays(today, -35);
@@ -154,21 +163,22 @@ export async function createDemoItems(): Promise<BatteryItem[]> {
       name: 'Anker 20000mAh 行動電源',
       location: '書房木桌右側第一層收納抽屜（USB-C 線旁）',
       category: '行動電源',
+      tags: ['書房', '抽屜', 'Type-C', '快充'],
       startDate: item1Start,
       intervalValue: 1,
       intervalUnit: 'month',
-      nextChargeDate: addInterval(item1Start, 1, 'month'), // Overdue by ~5 days
+      nextChargeDate: addInterval(item1Start, 1, 'month'),
       photos: [
         {
           id: 'p-1a',
-          dataUrl: pbImg,
-          caption: '物件外觀：深灰霧面行動電源',
+          dataUrl: pbPair.dataUrl,
+          thumbDataUrl: pbPair.thumbDataUrl,
           createdAt: nowIso,
         },
         {
           id: 'p-1b',
-          dataUrl: drawerImg,
-          caption: '放置位置循跡：書桌右側木頭抽屜中格',
+          dataUrl: drawerPair.dataUrl,
+          thumbDataUrl: drawerPair.thumbDataUrl,
           createdAt: nowIso,
         },
       ],
@@ -182,15 +192,16 @@ export async function createDemoItems(): Promise<BatteryItem[]> {
       name: 'Fujifilm X-T4 數位相機電池',
       location: '客廳白色收納櫃中層（鏡頭袋左側）',
       category: '攝影器材',
+      tags: ['客廳', '白色櫃', '相機電池'],
       startDate: item2Start,
       intervalValue: 4,
       intervalUnit: 'week',
-      nextChargeDate: addInterval(item2Start, 4, 'week'), // Due within 3 days
+      nextChargeDate: addInterval(item2Start, 4, 'week'),
       photos: [
         {
           id: 'p-2a',
-          dataUrl: camImg,
-          caption: '存放位置：白色層架中層左側',
+          dataUrl: camPair.dataUrl,
+          thumbDataUrl: camPair.thumbDataUrl,
           createdAt: nowIso,
         },
       ],
@@ -204,10 +215,11 @@ export async function createDemoItems(): Promise<BatteryItem[]> {
       name: '防災手電筒（備用鋰電）',
       location: '玄關鞋櫃上層白色收納盒內',
       category: '照明工具',
+      tags: ['玄關', '停電備用', '18650'],
       startDate: item3Start,
       intervalValue: 30,
       intervalUnit: 'day',
-      nextChargeDate: addInterval(item3Start, 30, 'day'), // Due within 18 days (month)
+      nextChargeDate: addInterval(item3Start, 30, 'day'),
       photos: [],
       notes: '停電緊急照明用，每 30 天補電一次。',
       resetCount: 3,
@@ -215,4 +227,42 @@ export async function createDemoItems(): Promise<BatteryItem[]> {
       updatedAt: nowIso,
     },
   ];
+}
+
+export async function optimizeAllStoredPhotos(items: BatteryItem[]): Promise<{
+  updatedItems: BatteryItem[];
+  beforeBytes: number;
+  afterBytes: number;
+}> {
+  let beforeBytes = 0;
+  let afterBytes = 0;
+  const updatedItems: BatteryItem[] = [];
+
+  for (const item of items) {
+    const newPhotos = [];
+    for (const p of item.photos) {
+      beforeBytes += estimateDataUrlBytes(p.dataUrl) + estimateDataUrlBytes(p.thumbDataUrl || '');
+      if (p.dataUrl.startsWith('data:image/')) {
+        try {
+          const pair = await compressImageToPair(p.dataUrl);
+          // Keep smaller representation if already smaller
+          const origSize = estimateDataUrlBytes(p.dataUrl);
+          const newSize = estimateDataUrlBytes(pair.dataUrl);
+          const finalFull = newSize < origSize ? pair.dataUrl : p.dataUrl;
+          const finalThumb = pair.thumbDataUrl;
+          afterBytes += estimateDataUrlBytes(finalFull) + estimateDataUrlBytes(finalThumb);
+          newPhotos.push({ ...p, dataUrl: finalFull, thumbDataUrl: finalThumb });
+          continue;
+        } catch {
+          // fallback keep existing
+        }
+      }
+      afterBytes += estimateDataUrlBytes(p.dataUrl) + estimateDataUrlBytes(p.thumbDataUrl || '');
+      newPhotos.push(p);
+    }
+    updatedItems.push({ ...item, photos: newPhotos });
+  }
+
+  await replaceAllItems(updatedItems);
+  return { updatedItems, beforeBytes, afterBytes };
 }

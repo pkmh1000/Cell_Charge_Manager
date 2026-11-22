@@ -18,7 +18,7 @@ export type DeviceCategory =
 export interface PhotoEvidence {
   id: string;
   dataUrl: string;
-  caption: string;
+  thumbDataUrl?: string; // Lightweight 280px thumbnail for fast low-memory grid/card rendering
   createdAt: string;
 }
 
@@ -27,6 +27,7 @@ export interface BatteryItem {
   name: string;
   location: string;
   category: DeviceCategory;
+  tags?: string[]; // Searchable item tags (e.g. 書房, Type-C, 停電備用)
   startDate: string; // YYYY-MM-DD (充電起始日)
   intervalValue: number;
   intervalUnit: CycleUnit;
@@ -41,6 +42,6 @@ export interface BatteryItem {
 export interface AppSettings {
   theme: 'light' | 'dark';
   remindersEnabled: boolean;
-  reminderDaysBefore: number; // e.g. 0 = on due day, 3 = 3 days before
-  lastReminderDate: string | null; // YYYY-MM-DD
+  reminderDaysBefore: number;
+  lastReminderDate: string | null;
 }

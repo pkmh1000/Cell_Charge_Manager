@@ -126,7 +126,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   const renderCompactItemRow = (item: BatteryItem) => {
     const urgency = getUrgencyInfo(item.nextChargeDate, today);
-    const cover = item.photos[0]?.dataUrl;
+    const cover = item.photos[0]?.thumbDataUrl || item.photos[0]?.dataUrl;
 
     return (
       <div
@@ -140,7 +140,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         >
           <div className="h-12 w-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-200/70 dark:border-slate-700/60">
             {cover ? (
-              <img src={cover} alt={item.name} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+              <img
+                src={cover}
+                alt={item.name}
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
             ) : (
               <BatteryCharging className="h-5 w-5 text-slate-400" />
             )}

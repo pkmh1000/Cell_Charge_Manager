@@ -22,12 +22,14 @@ import { SettingsView } from './components/SettingsView';
 import { useOnlineStatus, usePWAInstall } from './hooks/usePWA';
 import { AppSettings, BatteryItem, FilterScope } from './types/battery';
 import { addInterval, diffDaysBetween, getTodayStr } from './utils/dateCycle';
+import { formatBytesCompact } from './utils/imageUtils';
 import {
   createDemoItems,
   DEFAULT_SETTINGS,
   deleteItemById,
   loadAllItems,
   loadSettings,
+  optimizeAllStoredPhotos,
   replaceAllItems,
   saveItem,
   saveSettings,
@@ -180,6 +182,15 @@ export default function App() {
     showToast('已載入 3 筆範例電器，可點擊查看多張位置照片');
   };
 
+  const handleOptimizePhotos = async (): Promise<string> => {
+    const { updatedItems, beforeBytes, afterBytes } = await optimizeAllStoredPhotos(items);
+    setItems(updatedItems);
+    const saved = Math.max(0, beforeBytes - afterBytes);
+    return saved > 1024
+      ? `照片最佳化完成：從 ${formatBytesCompact(beforeBytes)} 縮減至 ${formatBytesCompact(afterBytes)}（節省 ${formatBytesCompact(saved)}）`
+      : `已完成所有照片檢視與縮圖建立（目前總計 ${formatBytesCompact(afterBytes)}）。`;
+  };
+
   const handleSendTestNotification = async (): Promise<string> => {
     if (typeof Notification === 'undefined') {
       return '此裝置瀏覽器不支援網頁系統通知，建議改用「匯出手機行事曆 (.ics)」。';
@@ -232,7 +243,8 @@ export default function App() {
     return items
       .filter((item) => {
         if (q) {
-          const haystack = `${item.name} ${item.location} ${item.category} ${item.notes}`.toLowerCase();
+          const tagsText = (item.tags || []).join(' ');
+          const haystack = `${item.name} ${item.location} ${item.category} ${tagsText} ${item.notes}`.toLowerCase();
           if (!haystack.includes(q)) return false;
         }
 
@@ -392,7 +404,7 @@ export default function App() {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="搜尋物件名稱、放置位置（如：抽屜、書房）、分類..."
+                  placeholder="搜尋物件名稱、標籤、放置位置（如：抽屜、書房）、分類..."
                   className="w-full min-h-[48px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] pl-10 pr-11 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none"
                 />
                 {searchQuery && (
@@ -557,6 +569,7 @@ export default function App() {
             onUpdateSettings={handleUpdateSettings}
             onImportItems={handleImportItems}
             onLoadDemoItems={handleLoadDemoItems}
+            onOptimizePhotos={handleOptimizePhotos}
             onSendTestNotification={handleSendTestNotification}
           />
         )}

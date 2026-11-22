@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { AppSettings, BatteryItem } from '../types/battery';
 import { useBetaUpdater, usePWAInstall } from '../hooks/usePWA';
+import { estimateDataUrlBytes, formatBytesCompact } from '../utils/imageUtils';
 import { PWAInstallModal } from './PWAInstallModal';
 
 interface SettingsViewProps {
@@ -20,6 +21,7 @@ interface SettingsViewProps {
   onUpdateSettings: (next: AppSettings) => void;
   onImportItems: (imported: BatteryItem[]) => Promise<void>;
   onLoadDemoItems: () => Promise<void>;
+  onOptimizePhotos: () => Promise<string>;
   onSendTestNotification: () => Promise<string>;
 }
 
@@ -29,6 +31,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateSettings,
   onImportItems,
   onLoadDemoItems,
+  onOptimizePhotos,
   onSendTestNotification,
 }) => {
   const { isInstallable, isInstalled, install } = usePWAInstall();
@@ -46,7 +49,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [showDeployGuide, setShowDeployGuide] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  const totalPhotosCount = items.reduce((sum, it) => sum + it.photos.length, 0);
+  const totalPhotoBytes = items.reduce(
+    (sum, it) =>
+      sum +
+      it.photos.reduce(
+        (pSum, p) => pSum + estimateDataUrlBytes(p.dataUrl) + estimateDataUrlBytes(p.thumbDataUrl || ''),
+        0
+      ),
+    0
+  );
 
   const handleToggleNotifications = async () => {
     if (!settings.remindersEnabled) {
@@ -281,7 +296,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">外觀與資料備份</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
-              所有資料與多張照片皆安全儲存於本機離線資料庫（目前共 {items.length} 件物件）
+              所有資料儲存於本機離線資料庫（{items.length} 件物件 · {totalPhotosCount} 張照片約佔 {formatBytesCompact(totalPhotoBytes)}）
             </p>
           </div>
 
@@ -318,6 +333,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             <Upload className="h-4 w-4" />
             匯入還原備份
+          </button>
+
+          <button
+            type="button"
+            disabled={totalPhotosCount === 0 || isOptimizing}
+            onClick={async () => {
+              setIsOptimizing(true);
+              const msg = await onOptimizePhotos();
+              setFeedbackMsg(msg);
+              setIsOptimizing(false);
+            }}
+            className="min-h-[44px] inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className={`h-4 w-4 ${isOptimizing ? 'animate-spin' : ''}`} />
+            {isOptimizing ? '最佳化壓縮中...' : '最佳化照片空間'}
           </button>
 
           <button
