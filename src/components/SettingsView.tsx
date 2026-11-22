@@ -5,7 +5,6 @@ import {
   Download,
   Moon,
   RefreshCw,
-  Share,
   Smartphone,
   Sparkles,
   Sun,
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react';
 import { AppSettings, BatteryItem } from '../types/battery';
 import { useBetaUpdater, usePWAInstall } from '../hooks/usePWA';
+import { PWAInstallModal } from './PWAInstallModal';
 
 interface SettingsViewProps {
   items: BatteryItem[];
@@ -31,7 +31,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onLoadDemoItems,
   onSendTestNotification,
 }) => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, install } = usePWAInstall();
   const {
     currentVersion,
     channel,
@@ -43,7 +43,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     installUpdate,
   } = useBetaUpdater();
 
-  const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [showDeployGuide, setShowDeployGuide] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -129,37 +129,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <CheckCircle2 className="h-4 w-4" />
             目前已於獨立 App 模式（Standalone）中執行
           </div>
-        ) : isInstallable ? (
-          <button
-            type="button"
-            onClick={install}
-            className="min-h-[48px] w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
-            立即安裝 CellKeep App
-          </button>
-        ) : isIOS ? (
-          <div className="space-y-2.5">
+        ) : (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {isInstallable && (
+              <button
+                type="button"
+                onClick={install}
+                className="min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+                立即安裝 CellKeep App
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setShowIOSGuide((v) => !v)}
-              className="min-h-[46px] inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-100 cursor-pointer"
+              onClick={() => setShowInstallModal(true)}
+              className={`min-h-[48px] inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer ${
+                isInstallable
+                  ? 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  : 'bg-teal-600 text-white hover:bg-teal-700'
+              }`}
             >
-              <Share className="h-4 w-4 text-teal-600" />
-              查看 iPhone / iPad Safari 安裝步驟
+              <Smartphone className="h-4 w-4" />
+              開啟安裝畫面與步驟引導
             </button>
-            {showIOSGuide && (
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 p-3.5 text-sm text-slate-700 dark:text-slate-300 space-y-1">
-                <p>1. 點擊 Safari 下方工具列的「分享」圖示。</p>
-                <p>2. 向下滑動並選擇「加入主畫面」。</p>
-                <p>3. 點擊右上角「新增」，即可像原生 App 一樣離線開啟。</p>
-              </div>
-            )}
           </div>
-        ) : (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            請使用 Chrome / Edge 瀏覽器的網址列「安裝應用程式」圖示，或於手機瀏覽器選單中點選「加到主畫面」。
-          </p>
         )}
       </section>
 
@@ -375,6 +369,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </section>
+
+      {showInstallModal && <PWAInstallModal onClose={() => setShowInstallModal(false)} />}
     </div>
   );
 };

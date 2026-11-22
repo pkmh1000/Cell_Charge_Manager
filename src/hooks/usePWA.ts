@@ -4,15 +4,36 @@ import { registerSW } from 'virtual:pwa-register';
 export const APP_VERSION = '0.9.0-beta.1';
 export const APP_CHANNEL = 'Beta';
 
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+// Capture beforeinstallprompt globally before React mounts so it is never missed
+let globalDeferredPrompt: BeforeInstallPromptEvent | null = null;
+const promptListeners = new Set<(e: BeforeInstallPromptEvent | null) => void>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    globalDeferredPrompt = e as BeforeInstallPromptEvent;
+    promptListeners.forEach((cb) => cb(globalDeferredPrompt));
+  });
+
+  window.addEventListener('appinstalled', () => {
+    globalDeferredPrompt = null;
+    promptListeners.forEach((cb) => cb(null));
+  });
+}
+
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
+    globalDeferredPrompt
+  );
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [isInIframe, setIsInIframe] = useState(false);
 
   useEffect(() => {
     const isStandalone =
@@ -20,33 +41,40 @@ export function usePWAInstall() {
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsInstalled(isStandalone);
 
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+    const ua = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(ua));
+    setIsAndroid(/android/.test(ua));
 
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    try {
+      setIsInIframe(window.self !== window.top);
+    } catch {
+      setIsInIframe(true);
+    }
+
+    const listener = (promptEvent: BeforeInstallPromptEvent | null) => {
+      setDeferredPrompt(promptEvent);
     };
+    promptListeners.add(listener);
 
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
     };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      promptListeners.delete(listener);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
   const install = async () => {
-    if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+    const promptToUse = deferredPrompt || globalDeferredPrompt;
+    if (!promptToUse) return false;
+    await promptToUse.prompt();
+    const { outcome } = await promptToUse.userChoice;
     if (outcome === 'accepted') {
+      globalDeferredPrompt = null;
       setIsInstalled(true);
       setDeferredPrompt(null);
       return true;
@@ -58,6 +86,8 @@ export function usePWAInstall() {
     isInstallable: !!deferredPrompt,
     isInstalled,
     isIOS,
+    isAndroid,
+    isInIframe,
     install,
   };
 }
@@ -107,7 +137,6 @@ export function useBetaUpdater() {
   const updateSWRef = useRef<((reloadPage?: boolean) => Promise<void>) | null>(null);
 
   useEffect(() => {
-    // Register service worker in manual prompt mode: never force-reload or auto-notify
     const updateSW = registerSW({
       immediate: true,
       onNeedRefresh() {
@@ -117,7 +146,7 @@ export function useBetaUpdater() {
         registrationRef.current = registration;
       },
       onRegisterError() {
-        // Silent in preview / unsupported contexts
+        // Silent in unsupported contexts
       },
     });
     updateSWRef.current = updateSW;

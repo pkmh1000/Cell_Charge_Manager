@@ -3,10 +3,12 @@ import {
   BatteryCharging,
   CalendarRange,
   Camera,
+  Download,
   ListChecks,
   Plus,
   Search,
   Settings,
+  Smartphone,
   Sparkles,
   WifiOff,
   X,
@@ -14,9 +16,10 @@ import {
 import { ItemCard } from './components/ItemCard';
 import { ItemDetailSheet } from './components/ItemDetailSheet';
 import { ItemFormSheet } from './components/ItemFormSheet';
+import { PWAInstallModal } from './components/PWAInstallModal';
 import { ScheduleView } from './components/ScheduleView';
 import { SettingsView } from './components/SettingsView';
-import { useOnlineStatus } from './hooks/usePWA';
+import { useOnlineStatus, usePWAInstall } from './hooks/usePWA';
 import { AppSettings, BatteryItem, FilterScope } from './types/battery';
 import { addInterval, diffDaysBetween, getTodayStr } from './utils/dateCycle';
 import {
@@ -34,6 +37,7 @@ type ActiveTab = 'inventory' | 'schedule' | 'settings';
 
 export default function App() {
   const isOnline = useOnlineStatus();
+  const { isInstalled, isInstallable, install } = usePWAInstall();
   const [items, setItems] = useState<BatteryItem[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,6 +49,8 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<BatteryItem | null>(null);
   const [editingItem, setEditingItem] = useState<BatteryItem | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const [dismissInstallBar, setDismissInstallBar] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -427,6 +433,52 @@ export default function App() {
               </div>
             </section>
 
+            {/* Non-intrusive In-App Install Prompt Bar (hidden once installed in standalone mode) */}
+            {!isInstalled && !dismissInstallBar && (
+              <section className="rounded-2xl border border-teal-200/90 dark:border-teal-900/70 bg-teal-50/70 dark:bg-teal-950/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      安裝 CellKeep 到手機主畫面或電腦桌面
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      獨立全螢幕開啟、離線查看所有設備位置照片
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isInstallable ? (
+                    <button
+                      type="button"
+                      onClick={install}
+                      className="min-h-[42px] inline-flex items-center gap-1.5 rounded-xl bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 whitespace-nowrap cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      立即安裝
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallModal(true)}
+                    className="min-h-[42px] inline-flex items-center gap-1.5 rounded-xl bg-white dark:bg-slate-900 border border-teal-200 dark:border-teal-800 px-3.5 py-2 text-xs font-semibold text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
+                  >
+                    安裝畫面
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDismissInstallBar(true)}
+                    aria-label="暫時隱藏安裝提示"
+                    className="min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </section>
+            )}
+
             {/* Inventory Grid or Empty State */}
             {items.length === 0 ? (
               <section className="rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-[#161B22] px-6 py-12 text-center space-y-4">
@@ -609,6 +661,11 @@ export default function App() {
             setEditingItem(null);
           }}
         />
+      )}
+
+      {/* PWA Install Guide / Native Install Screen */}
+      {showInstallModal && (
+        <PWAInstallModal onClose={() => setShowInstallModal(false)} />
       )}
     </div>
   );
