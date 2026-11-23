@@ -2,7 +2,9 @@ export type CycleUnit = 'day' | 'week' | 'month' | 'year';
 
 export type UrgencyStatus = 'overdue' | 'due_week' | 'due_month' | 'healthy';
 
-export type FilterScope = 'all' | 'overdue' | 'due_week' | 'due_month' | 'healthy';
+export type FilterScope = 'all' | 'overdue' | 'due_week' | 'due_month' | 'healthy' | 'trash';
+
+export type SortMode = 'updated_desc' | 'due_asc' | 'name_asc';
 
 export type ScheduleGranularity = 'day' | 'week' | 'month' | 'year';
 
@@ -18,7 +20,7 @@ export type DeviceCategory =
 export interface PhotoEvidence {
   id: string;
   dataUrl: string;
-  thumbDataUrl?: string; // Lightweight 280px thumbnail for fast low-memory grid/card rendering
+  thumbDataUrl?: string;
   createdAt: string;
 }
 
@@ -27,14 +29,15 @@ export interface BatteryItem {
   name: string;
   location: string;
   category: DeviceCategory;
-  tags?: string[]; // Searchable item tags (e.g. 書房, Type-C, 停電備用)
-  startDate: string; // YYYY-MM-DD (充電起始日)
+  tags?: string[];
+  startDate: string; // YYYY-MM-DD
   intervalValue: number;
   intervalUnit: CycleUnit;
-  nextChargeDate: string; // YYYY-MM-DD (下次充電日)
+  nextChargeDate: string; // YYYY-MM-DD
   photos: PhotoEvidence[];
   notes: string;
   resetCount: number;
+  deletedAt?: string | null; // Non-null when placed in Recycle Bin
   createdAt: string;
   updatedAt: string;
 }
@@ -44,4 +47,6 @@ export interface AppSettings {
   remindersEnabled: boolean;
   reminderDaysBefore: number;
   lastReminderDate: string | null;
+  sortBy: SortMode;
+  savedTags: string[];
 }

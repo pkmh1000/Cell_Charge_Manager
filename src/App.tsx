@@ -1,15 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ArrowUpDown,
   BatteryCharging,
   CalendarRange,
   Camera,
   Download,
   ListChecks,
   Plus,
+  RotateCcw,
   Search,
   Settings,
   Smartphone,
   Sparkles,
+  Tag,
+  Trash2,
   WifiOff,
   X,
 } from 'lucide-react';
@@ -20,7 +24,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { ScheduleView } from './components/ScheduleView';
 import { SettingsView } from './components/SettingsView';
 import { useOnlineStatus, usePWAInstall } from './hooks/usePWA';
-import { AppSettings, BatteryItem, FilterScope } from './types/battery';
+import { AppSettings, BatteryItem, FilterScope, SortMode } from './types/battery';
 import { addInterval, diffDaysBetween, getTodayStr } from './utils/dateCycle';
 import { formatBytesCompact } from './utils/imageUtils';
 import {
@@ -53,6 +57,8 @@ export default function App() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [dismissInstallBar, setDismissInstallBar] = useState(false);
+  const [confirmTrashDeleteId, setConfirmTrashDeleteId] = useState<string | null>(null);
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -93,15 +99,67 @@ export default function App() {
     }
   }, [settings.theme]);
 
-  // Check periodic reminders once per day when enabled
+  const activeItems = useMemo(
+    () => items.filter((item) => !item.deletedAt),
+    [items]
+  );
+
+  const trashItems = useMemo(
+    () =>
+      items
+        .filter((item) => !!item.deletedAt)
+        .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || '')),
+    [items]
+  );
+
+  // Collect all tags across saved settings + active items for reuse & quick search
+  const allAvailableTags = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const item of activeItems) {
+      for (const t of item.tags || []) {
+        const clean = t.trim();
+        if (clean && !seen.has(clean)) {
+          seen.add(clean);
+          list.push(clean);
+        }
+      }
+    }
+    for (const t of settings.savedTags || []) {
+      const clean = t.trim();
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        list.push(clean);
+      }
+    }
+    return list;
+  }, [activeItems, settings.savedTags]);
+
+  // Tags actually present on active items (plus recently saved custom tags) for 1-tap search
+  const searchableTags = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const item of activeItems) {
+      for (const t of item.tags || []) {
+        const clean = t.trim();
+        if (clean && !seen.has(clean)) {
+          seen.add(clean);
+          list.push(clean);
+        }
+      }
+    }
+    return list;
+  }, [activeItems]);
+
+  // Check periodic reminders once per day when enabled (exclude items in Recycle Bin)
   useEffect(() => {
-    if (isLoading || !settings.remindersEnabled || items.length === 0) return;
+    if (isLoading || !settings.remindersEnabled || activeItems.length === 0) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
     const today = getTodayStr();
     if (settings.lastReminderDate === today) return;
 
-    const dueSoon = items.filter((item) => {
+    const dueSoon = activeItems.filter((item) => {
       const diff = diffDaysBetween(today, item.nextChargeDate);
       return diff <= settings.reminderDaysBefore;
     });
@@ -121,7 +179,7 @@ export default function App() {
     const updatedSettings: AppSettings = { ...settings, lastReminderDate: today };
     setSettings(updatedSettings);
     saveSettings(updatedSettings);
-  }, [isLoading, items, settings]);
+  }, [isLoading, activeItems, settings]);
 
   const handleUpdateSettings = async (next: AppSettings) => {
     setSettings(next);
@@ -134,6 +192,21 @@ export default function App() {
       const exists = prev.some((i) => i.id === saved.id);
       return exists ? prev.map((i) => (i.id === saved.id ? saved : i)) : [saved, ...prev];
     });
+
+    // Persist any newly added tags so they stay available for future edits & search
+    if (saved.tags && saved.tags.length > 0) {
+      const existingSet = new Set(settings.savedTags || []);
+      const newlyAdded = saved.tags.filter((t) => t.trim() && !existingSet.has(t.trim()));
+      if (newlyAdded.length > 0) {
+        const updatedSettings: AppSettings = {
+          ...settings,
+          savedTags: [...newlyAdded, ...(settings.savedTags || [])],
+        };
+        setSettings(updatedSettings);
+        await saveSettings(updatedSettings);
+      }
+    }
+
     if (selectedItem?.id === saved.id) {
       setSelectedItem(saved);
     }
@@ -159,11 +232,49 @@ export default function App() {
     showToast(`已重置「${item.name}」，下次充電日：${nextDate}`);
   };
 
-  const handleDeleteItem = async (id: string) => {
+  const handleMoveToTrash = async (id: string) => {
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    const trashed: BatteryItem = {
+      ...target,
+      deletedAt: new Date().toISOString(),
+    };
+    await saveItem(trashed);
+    setItems((prev) => prev.map((i) => (i.id === id ? trashed : i)));
+    setSelectedItem(null);
+    setIsFormOpen(false);
+    setEditingItem(null);
+    showToast(`已將「${target.name}」移至回收桶`);
+  };
+
+  const handleRestoreFromTrash = async (item: BatteryItem) => {
+    const restored: BatteryItem = {
+      ...item,
+      deletedAt: null,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveItem(restored);
+    setItems((prev) => prev.map((i) => (i.id === item.id ? restored : i)));
+    setConfirmTrashDeleteId(null);
+    showToast(`已還原「${item.name}」至物件清單`);
+  };
+
+  const handlePermanentDelete = async (id: string) => {
+    const target = items.find((i) => i.id === id);
     await deleteItemById(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
-    setSelectedItem(null);
-    showToast('已刪除該物件記錄');
+    setConfirmTrashDeleteId(null);
+    showToast(target ? `已永久刪除「${target.name}」` : '已永久刪除該物件');
+  };
+
+  const handleEmptyTrash = async () => {
+    for (const item of trashItems) {
+      await deleteItemById(item.id);
+    }
+    setItems((prev) => prev.filter((i) => !i.deletedAt));
+    setConfirmEmptyTrash(false);
+    setConfirmTrashDeleteId(null);
+    showToast('已清空回收桶');
   };
 
   const handleImportItems = async (imported: BatteryItem[]) => {
@@ -209,7 +320,7 @@ export default function App() {
     return '已發送測試通知，請檢查系統通知欄。';
   };
 
-  // Urgency counts for filter tabs & KPI strip
+  // Urgency counts for filter tabs & KPI strip (active items only)
   const counts = useMemo(() => {
     const today = getTodayStr();
     let overdue = 0;
@@ -217,7 +328,7 @@ export default function App() {
     let dueMonth = 0;
     let healthy = 0;
 
-    for (const item of items) {
+    for (const item of activeItems) {
       const diff = diffDaysBetween(today, item.nextChargeDate);
       if (diff < 0) overdue++;
       else if (diff <= 7) dueWeek++;
@@ -226,21 +337,23 @@ export default function App() {
     }
 
     return {
-      all: items.length,
+      all: activeItems.length,
       overdue,
       due_week: dueWeek,
       due_month: dueWeek + dueMonth, // 近月內包含30天內應充
       due_month_only: dueMonth,
       healthy,
+      trash: trashItems.length,
     };
-  }, [items]);
+  }, [activeItems, trashItems.length]);
 
-  // Filtered & urgency-sorted list
+  // Filtered & sorted active list
   const filteredItems = useMemo(() => {
+    if (filterScope === 'trash') return [];
     const today = getTodayStr();
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim().replace(/^#/, '').toLowerCase();
 
-    return items
+    return activeItems
       .filter((item) => {
         if (q) {
           const tagsText = (item.tags || []).join(' ');
@@ -255,8 +368,18 @@ export default function App() {
         if (filterScope === 'healthy') return diff > 30;
         return true;
       })
-      .sort((a, b) => a.nextChargeDate.localeCompare(b.nextChargeDate));
-  }, [items, searchQuery, filterScope]);
+      .sort((a, b) => {
+        if (settings.sortBy === 'due_asc') {
+          const cmp = a.nextChargeDate.localeCompare(b.nextChargeDate);
+          return cmp !== 0 ? cmp : b.updatedAt.localeCompare(a.updatedAt);
+        }
+        if (settings.sortBy === 'name_asc') {
+          return a.name.localeCompare(b.name, 'zh-Hant');
+        }
+        // Default: 'updated_desc' — newly edited or reset items appear at the top for confirmation
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+  }, [activeItems, searchQuery, filterScope, settings.sortBy]);
 
   const tabTitles: Record<ActiveTab, string> = {
     inventory: '物件清單與搜尋',
@@ -429,6 +552,33 @@ export default function App() {
                 )}
               </div>
 
+              {searchableTags.length > 0 && filterScope !== 'trash' && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
+                    <Tag className="h-3 w-3" />
+                    標籤快搜：
+                  </span>
+                  {searchableTags.map((tag) => {
+                    const isActive =
+                      searchQuery.trim().replace(/^#/, '').toLowerCase() === tag.toLowerCase();
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setSearchQuery(isActive ? '' : tag)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                          isActive
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white dark:bg-[#161B22] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500'
+                        }`}
+                      >
+                        #{tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {(
                   [
@@ -437,15 +587,22 @@ export default function App() {
                     { id: 'due_week', label: `近週內 (${counts.due_week})` },
                     { id: 'due_month', label: `近月內 (${counts.due_month})` },
                     { id: 'healthy', label: `電量健康 (${counts.healthy})` },
+                    { id: 'trash', label: `回收桶 (${counts.trash})` },
                   ] as const
                 ).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setFilterScope(tab.id)}
-                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap shrink-0 tabular-nums cursor-pointer ${
+                    onClick={() => {
+                      setFilterScope(tab.id);
+                      setConfirmTrashDeleteId(null);
+                      setConfirmEmptyTrash(false);
+                    }}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap shrink-0 tabular-nums cursor-pointer ${
                       filterScope === tab.id
-                        ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
+                        ? tab.id === 'trash'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
                         : 'bg-white dark:bg-[#161B22] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
@@ -453,6 +610,39 @@ export default function App() {
                   </button>
                 ))}
               </div>
+
+              {filterScope !== 'trash' && activeItems.length > 0 && (
+                <div className="flex items-center justify-between gap-2 pt-0.5">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                    排序方式
+                  </span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    {(
+                      [
+                        { id: 'updated_desc', label: '最近編輯 / 重置優先' },
+                        { id: 'due_asc', label: '逾期 / 到期日優先' },
+                        { id: 'name_asc', label: '物件名稱' },
+                      ] as Array<{ id: SortMode; label: string }>
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          handleUpdateSettings({ ...settings, sortBy: opt.id })
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                          settings.sortBy === opt.id
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-white dark:bg-[#161B22] border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-teal-500'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Non-intrusive In-App Install Prompt Bar (hidden once installed in standalone mode) */}
@@ -501,8 +691,144 @@ export default function App() {
               </section>
             )}
 
-            {/* Inventory Grid or Empty State */}
-            {items.length === 0 ? (
+            {/* Recycle Bin View or Inventory Grid / Empty State */}
+            {filterScope === 'trash' ? (
+              <section className="space-y-3">
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      回收桶（{trashItems.length} 件）
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      移入回收桶的物件不會發送充電提醒，您可隨時「還原」或於此「確認永久刪除」
+                    </p>
+                  </div>
+
+                  {trashItems.length > 0 && (
+                    confirmEmptyTrash ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleEmptyTrash}
+                          className="min-h-[38px] px-3 rounded-xl bg-red-600 text-xs font-semibold text-white hover:bg-red-700 cursor-pointer"
+                        >
+                          確認清空全部
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmEmptyTrash(false)}
+                          className="min-h-[38px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmEmptyTrash(true)}
+                        className="min-h-[38px] px-3.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/70 dark:bg-red-950/30 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-100/70 cursor-pointer"
+                      >
+                        清空回收桶
+                      </button>
+                    )
+                  )}
+                </div>
+
+                {trashItems.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] py-12 text-center space-y-2">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      回收桶目前是空的
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setFilterScope('all')}
+                      className="min-h-[42px] px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                    >
+                      返回物件清單
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {trashItems.map((item) => {
+                      const thumb = item.photos[0]?.thumbDataUrl || item.photos[0]?.dataUrl;
+                      const isConfirming = confirmTrashDeleteId === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] p-3 flex items-center gap-3"
+                        >
+                          <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={item.name}
+                                referrerPolicy="no-referrer"
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <BatteryCharging className="h-5 w-5 text-slate-400" />
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                              {item.name}
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                              {item.location}
+                            </p>
+                            <p className="text-[11px] text-slate-400 tabular-nums mt-0.5">
+                              移入時間：{item.deletedAt?.slice(0, 10)}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            {isConfirming ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePermanentDelete(item.id)}
+                                  className="min-h-[34px] px-2.5 rounded-lg bg-red-600 text-[11px] font-semibold text-white hover:bg-red-700 cursor-pointer"
+                                >
+                                  確認刪除
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmTrashDeleteId(null)}
+                                  className="min-h-[32px] px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-600 dark:text-slate-300 cursor-pointer"
+                                >
+                                  取消
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreFromTrash(item)}
+                                  className="min-h-[34px] inline-flex items-center justify-center gap-1 px-2.5 rounded-lg bg-teal-600 text-[11px] font-semibold text-white hover:bg-teal-700 cursor-pointer"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  還原
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmTrashDeleteId(item.id)}
+                                  className="min-h-[32px] inline-flex items-center justify-center gap-1 px-2.5 rounded-lg border border-red-200 dark:border-red-900/60 text-[11px] font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  刪除
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : activeItems.length === 0 ? (
               <section className="rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-[#161B22] px-6 py-12 text-center space-y-4">
                 <div className="h-14 w-14 rounded-2xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center mx-auto">
                   <Camera className="h-7 w-7" />
@@ -554,7 +880,7 @@ export default function App() {
                 </button>
               </section>
             ) : (
-              <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {filteredItems.map((item) => (
                   <ItemCard
                     key={item.id}
@@ -568,13 +894,13 @@ export default function App() {
           </div>
         ) : activeTab === 'schedule' ? (
           <ScheduleView
-            items={items}
+            items={activeItems}
             onSelectItem={(it) => setSelectedItem(it)}
             onQuickReset={(it) => handleResetCycle(it, getTodayStr())}
           />
         ) : (
           <SettingsView
-            items={items}
+            items={activeItems}
             settings={settings}
             onUpdateSettings={handleUpdateSettings}
             onImportItems={handleImportItems}
@@ -670,7 +996,7 @@ export default function App() {
             setIsFormOpen(true);
           }}
           onResetCycle={handleResetCycle}
-          onDelete={handleDeleteItem}
+          onMoveToTrash={handleMoveToTrash}
         />
       )}
 
@@ -678,7 +1004,9 @@ export default function App() {
       {isFormOpen && (
         <ItemFormSheet
           initialItem={editingItem}
+          availableTags={allAvailableTags}
           onSave={handleSaveItem}
+          onMoveToTrash={handleMoveToTrash}
           onCancel={() => {
             setIsFormOpen(false);
             setEditingItem(null);

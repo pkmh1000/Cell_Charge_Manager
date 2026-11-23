@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BatteryCharging,
@@ -73,10 +73,20 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     return Array.from({ length: 7 }, (_, i) => addDays(weekInfo.startOfWeek, i));
   }, [weekInfo.startOfWeek]);
 
-  // Month matrix
+  // Month matrix & summary stats
   const viewYear = viewDate.getFullYear();
   const viewMonth = viewDate.getMonth();
   const monthCells = useMemo(() => getMonthMatrix(viewYear, viewMonth), [viewYear, viewMonth]);
+  const monthPrefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+  const monthStats = useMemo(() => {
+    const monthItems = items.filter((i) => i.nextChargeDate.startsWith(monthPrefix));
+    const uniqueDays = new Set(monthItems.map((i) => i.nextChargeDate));
+    return {
+      taskCount: monthItems.length,
+      dayCount: uniqueDays.size,
+    };
+  }, [items, monthPrefix]);
+  const selectedDaySectionRef = useRef<HTMLDivElement>(null);
 
   // Year monthly counts
   const yearMonthBuckets = useMemo(() => {
@@ -144,7 +154,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           onClick={() => onSelectItem(item)}
           className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
         >
-          <div className="h-12 w-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-200/70 dark:border-slate-700/60">
+          <div className="h-12 w-12 rounded-xl bg-slate-200/70 dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-200/70 dark:border-slate-700/60">
             {cover ? (
               <img
                 src={cover}
@@ -152,7 +162,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 referrerPolicy="no-referrer"
                 loading="lazy"
                 decoding="async"
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
             ) : (
               <BatteryCharging className="h-5 w-5 text-slate-400" />
@@ -349,6 +359,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {/* MONTH VIEW */}
       {granularity === 'month' && (
         <section className="space-y-4">
+          {/* Monthly Task Count Overview */}
+          <div className="rounded-2xl border border-teal-200/80 dark:border-teal-900/60 bg-teal-50/75 dark:bg-teal-950/25 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-teal-950 dark:text-teal-200 tabular-nums">
+              {viewYear} 年 {viewMonth + 1} 月共有{' '}
+              <span className="text-teal-700 dark:text-teal-300 font-bold">{monthStats.taskCount}</span>{' '}
+              項充電任務（分佈於 {monthStats.dayCount} 天）
+            </div>
+            <span className="text-xs text-teal-700 dark:text-teal-400">
+              點選日期即可查看當日到期的電器
+            </span>
+          </div>
+
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] p-3 sm:p-4">
             <div className="grid grid-cols-7 gap-1 mb-2 text-center">
               {WEEKDAY_HEADERS.map((w) => (
@@ -369,10 +391,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   <button
                     key={cell.dateStr}
                     type="button"
-                    onClick={() => setSelectedDate(cell.dateStr)}
-                    className={`min-h-[52px] sm:min-h-[60px] flex flex-col items-center justify-between rounded-xl p-1.5 transition-all cursor-pointer border ${
+                    onClick={() => {
+                      setSelectedDate(cell.dateStr);
+                      setTimeout(() => {
+                        selectedDaySectionRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'nearest',
+                        });
+                      }, 40);
+                    }}
+                    className={`min-h-[54px] sm:min-h-[62px] flex flex-col items-center justify-between rounded-xl p-1.5 transition-all cursor-pointer border ${
                       isSelected
-                        ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200'
+                        ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200 ring-2 ring-teal-500/25'
                         : isTodayCell
                           ? 'border-slate-400 dark:border-slate-500 bg-slate-50 dark:bg-slate-800/70'
                           : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -399,9 +429,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
 
           {/* Selected Date Detail List beneath Month Grid */}
-          <div className="space-y-2.5">
+          <div ref={selectedDaySectionRef} className="space-y-2.5 pt-1">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 tabular-nums">
-              {formatDateWithWeekday(selectedDate)} · 當天充電清單（{selectedDayItems.length} 件）
+              {formatDateWithWeekday(selectedDate)} · 當天到期電器（{selectedDayItems.length} 件）
             </h3>
             {selectedDayItems.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -409,7 +439,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               </div>
             ) : (
               <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center rounded-2xl bg-white dark:bg-[#161B22] border border-slate-200 dark:border-slate-800">
-                點選上方有標記件數的日期，即可查看可同日一起充電的物件
+                這一天沒有到期的電器，點選上方標記件數的日期即可查看
               </p>
             )}
           </div>

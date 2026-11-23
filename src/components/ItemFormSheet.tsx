@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
+  ChevronLeft,
+  ChevronRight,
+  GripHorizontal,
   ImagePlus,
   MapPin,
   Plus,
@@ -20,8 +23,10 @@ import {
 
 interface ItemFormSheetProps {
   initialItem?: BatteryItem | null;
+  availableTags?: string[];
   onSave: (item: BatteryItem) => void;
   onCancel: () => void;
+  onMoveToTrash?: (id: string) => void;
 }
 
 interface FormSnapshot {
@@ -48,7 +53,7 @@ const CATEGORIES: DeviceCategory[] = [
   '其他',
 ];
 
-const QUICK_TAGS = ['書房', '客廳', '抽屜', '防潮箱', 'Type-C', '備用電池', '停電照明'];
+const DEFAULT_QUICK_TAGS = ['書房', '客廳', '抽屜', '防潮箱', 'Type-C', '備用電池', '停電照明'];
 
 const CYCLE_PRESETS: Array<{ label: string; value: number; unit: CycleUnit }> = [
   { label: '7 天', value: 7, unit: 'day' },
@@ -60,8 +65,10 @@ const CYCLE_PRESETS: Array<{ label: string; value: number; unit: CycleUnit }> = 
 
 export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
   initialItem,
+  availableTags = [],
   onSave,
   onCancel,
+  onMoveToTrash,
 }) => {
   const today = getTodayStr();
 
@@ -93,11 +100,9 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [intervalError, setIntervalError] = useState<string | null>(null);
 
-  // Press-and-hold drag-to-reorder state
+  // Dedicated touch-none drag handle reorder state
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const draggingIdxRef = useRef<number | null>(null);
-  const holdTimerRef = useRef<number | null>(null);
-  const pointerDownPosRef = useRef<{ x: number; y: number; photoId: string } | null>(null);
   const preDragSnapshotRef = useRef<FormSnapshot | null>(null);
   const formRef = useRef<FormSnapshot>(form);
   formRef.current = form;
@@ -156,25 +161,7 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
   };
 
   useEffect(() => {
-    const clearHoldTimer = () => {
-      if (holdTimerRef.current !== null) {
-        window.clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = null;
-      }
-    };
-
     const handleWindowPointerMove = (e: PointerEvent) => {
-      // Cancel pending hold if user is scrolling
-      if (draggingIdxRef.current === null && pointerDownPosRef.current) {
-        const dx = e.clientX - pointerDownPosRef.current.x;
-        const dy = e.clientY - pointerDownPosRef.current.y;
-        if (Math.hypot(dx, dy) > 10) {
-          clearHoldTimer();
-          pointerDownPosRef.current = null;
-        }
-        return;
-      }
-
       const activeIdx = draggingIdxRef.current;
       if (activeIdx === null) return;
 
@@ -202,27 +189,18 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
     };
 
     const handleWindowPointerEnd = () => {
-      clearHoldTimer();
-      const wasDragging = draggingIdxRef.current !== null;
-      const tapMeta = pointerDownPosRef.current;
-      pointerDownPosRef.current = null;
-
-      if (wasDragging) {
-        draggingIdxRef.current = null;
-        setDraggingIdx(null);
-        const beforeSnap = preDragSnapshotRef.current;
-        preDragSnapshotRef.current = null;
-        if (beforeSnap) {
-          const beforeIds = beforeSnap.photos.map((p) => p.id).join(',');
-          const afterIds = formRef.current.photos.map((p) => p.id).join(',');
-          if (beforeIds !== afterIds) {
-            setUndoStack((u) => [...u.slice(-39), beforeSnap]);
-            setRedoStack([]);
-          }
+      if (draggingIdxRef.current === null) return;
+      draggingIdxRef.current = null;
+      setDraggingIdx(null);
+      const beforeSnap = preDragSnapshotRef.current;
+      preDragSnapshotRef.current = null;
+      if (beforeSnap) {
+        const beforeIds = beforeSnap.photos.map((p) => p.id).join(',');
+        const afterIds = formRef.current.photos.map((p) => p.id).join(',');
+        if (beforeIds !== afterIds) {
+          setUndoStack((u) => [...u.slice(-39), beforeSnap]);
+          setRedoStack([]);
         }
-      } else if (tapMeta) {
-        // Quick tap without moving or entering drag -> open full-screen view
-        setZoomedPhotoId(tapMeta.photoId);
       }
     };
 
@@ -230,41 +208,40 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
     window.addEventListener('pointerup', handleWindowPointerEnd);
     window.addEventListener('pointercancel', handleWindowPointerEnd);
     return () => {
-      clearHoldTimer();
       window.removeEventListener('pointermove', handleWindowPointerMove);
       window.removeEventListener('pointerup', handleWindowPointerEnd);
       window.removeEventListener('pointercancel', handleWindowPointerEnd);
     };
   }, []);
 
-  const handlePhotoPointerDown = (
+  const handleDragHandlePointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
-    index: number,
-    photoId: string
+    index: number
   ) => {
-    // Ignore if tapping the tiny delete button
-    if ((e.target as HTMLElement).closest('[data-delete-photo]')) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
-
-    pointerDownPosRef.current = { x: e.clientX, y: e.clientY, photoId };
-    if (holdTimerRef.current !== null) {
-      window.clearTimeout(holdTimerRef.current);
-    }
-
-    const delay = e.pointerType === 'mouse' ? 140 : 220;
-    holdTimerRef.current = window.setTimeout(() => {
-      holdTimerRef.current = null;
-      preDragSnapshotRef.current = formRef.current;
-      draggingIdxRef.current = index;
-      setDraggingIdx(index);
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate(15);
-        } catch {
-          // ignore
-        }
+    e.preventDefault();
+    e.stopPropagation();
+    preDragSnapshotRef.current = formRef.current;
+    draggingIdxRef.current = index;
+    setDraggingIdx(index);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(12);
+      } catch {
+        // ignore
       }
-    }, delay);
+    }
+  };
+
+  const handleMovePhoto = (fromIdx: number, delta: -1 | 1) => {
+    const toIdx = fromIdx + delta;
+    if (toIdx < 0 || toIdx >= form.photos.length) return;
+    applyDiscreteChange((prev) => {
+      const reordered = [...prev.photos];
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
+      return { ...prev, photos: reordered };
+    });
   };
 
   const handleFilesSelected = async (selectedFiles: File[]) => {
@@ -393,12 +370,26 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
       photos: form.photos,
       notes: form.notes.trim(),
       resetCount: initialItem?.resetCount ?? 0,
+      deletedAt: initialItem?.deletedAt ?? null,
       createdAt: initialItem?.createdAt ?? nowIso,
       updatedAt: nowIso,
     };
 
     onSave(saved);
   };
+
+  const mergedQuickTags = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const t of [...availableTags, ...DEFAULT_QUICK_TAGS]) {
+      const clean = t.trim();
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        list.push(clean);
+      }
+    }
+    return list;
+  }, [availableTags]);
 
   const totalPhotoBytes = useMemo(
     () =>
@@ -537,54 +528,86 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
             {form.photos.length > 0 && (
               <div className="space-y-2">
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  點選照片可放大全圖 · 按住照片拖曳可調整前後順序
+                  點照片可放大全圖 · 按住下方「⠿ 序號」拖曳或點箭頭調整順序
                 </p>
-                <div
-                  className={`grid grid-cols-3 sm:grid-cols-4 gap-2.5 ${
-                    draggingIdx !== null ? 'touch-none select-none' : ''
-                  }`}
-                >
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                   {form.photos.map((photo, index) => {
                     const isDragging = draggingIdx === index;
                     return (
                       <div
                         key={photo.id}
                         data-photo-idx={index}
-                        onPointerDown={(e) => handlePhotoPointerDown(e, index, photo.id)}
-                        style={{ WebkitTouchCallout: 'none' }}
-                        className={`relative aspect-square rounded-xl overflow-hidden border bg-slate-100 dark:bg-slate-900 select-none transition-transform duration-150 cursor-pointer ${
+                        className={`flex flex-col rounded-xl overflow-hidden border bg-slate-100 dark:bg-slate-900 select-none transition-transform duration-150 ${
                           isDragging
                             ? 'scale-105 border-teal-500 ring-2 ring-teal-500 shadow-lg z-10 opacity-95'
                             : 'border-slate-200 dark:border-slate-700'
                         }`}
                       >
-                        <img
-                          src={photo.thumbDataUrl || photo.dataUrl}
-                          alt={`照片 ${index + 1}`}
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                          decoding="async"
-                          draggable={false}
-                          className="h-full w-full object-cover pointer-events-none select-none"
-                        />
-
-                        <span className="pointer-events-none absolute top-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
-                          {index + 1}
-                        </span>
-
-                        <button
-                          type="button"
-                          data-delete-photo="true"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemovePhoto(photo.id);
-                          }}
-                          aria-label="刪除此照片"
-                          className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600 transition-colors cursor-pointer"
+                        {/* Tappable uncropped full thumbnail area */}
+                        <div
+                          onClick={() => setZoomedPhotoId(photo.id)}
+                          className="relative aspect-square w-full bg-slate-200/70 dark:bg-slate-950/60 flex items-center justify-center cursor-pointer"
                         >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                          <img
+                            src={photo.thumbDataUrl || photo.dataUrl}
+                            alt={`照片 ${index + 1}`}
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                            decoding="async"
+                            draggable={false}
+                            className="h-full w-full object-contain select-none"
+                          />
+
+                          <button
+                            type="button"
+                            data-delete-photo="true"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemovePhoto(photo.id);
+                            }}
+                            aria-label="刪除此照片"
+                            className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600 transition-colors cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Dedicated touch-none reorder grip + 1-tap left/right buttons */}
+                        <div className="flex items-center justify-between border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#161B22] px-1 py-1">
+                          <button
+                            type="button"
+                            onClick={() => handleMovePhoto(index, -1)}
+                            disabled={index === 0}
+                            aria-label="往前移"
+                            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-25 cursor-pointer"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+
+                          <div
+                            onPointerDown={(e) => handleDragHandlePointerDown(e, index)}
+                            style={{ touchAction: 'none', WebkitTouchCallout: 'none' }}
+                            title="按住拖曳調整順序"
+                            className={`touch-none flex-1 h-7 flex items-center justify-center gap-0.5 rounded-md text-[11px] font-semibold tabular-nums cursor-grab active:cursor-grabbing ${
+                              isDragging
+                                ? 'bg-teal-600 text-white'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <GripHorizontal className="h-3.5 w-3.5" />
+                            <span>{index + 1}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleMovePhoto(index, 1)}
+                            disabled={index === form.photos.length - 1}
+                            aria-label="往後移"
+                            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-25 cursor-pointer"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -698,17 +721,19 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
             )}
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-slate-400">快速加入：</span>
-              {QUICK_TAGS.filter((t) => !form.tags.includes(t)).map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => handleAddTag(preset)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-teal-500 cursor-pointer"
-                >
-                  +{preset}
-                </button>
-              ))}
+              <span className="text-[11px] text-slate-400">常用 / 已儲存標籤：</span>
+              {mergedQuickTags
+                .filter((t) => !form.tags.includes(t))
+                .map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleAddTag(preset)}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-teal-500 cursor-pointer"
+                  >
+                    +{preset}
+                  </button>
+                ))}
             </div>
           </section>
 
@@ -870,6 +895,19 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-sm text-slate-900 dark:text-slate-100 focus:border-teal-600 focus:outline-none"
             />
           </div>
+
+          {initialItem && onMoveToTrash && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => onMoveToTrash(initialItem.id)}
+                className="w-full min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/30 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100/70 dark:hover:bg-red-950/50 cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+                將此物件移至回收桶
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Sticky Bottom Action Bar (Thumb zone, away from iOS corners) */}

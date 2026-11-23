@@ -16,6 +16,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   remindersEnabled: false,
   reminderDaysBefore: 3,
   lastReminderDate: null,
+  sortBy: 'updated_desc',
+  savedTags: ['書房', '客廳', '抽屜', '防潮箱', 'Type-C', '備用電池', '停電照明'],
 };
 
 function openDB(): Promise<IDBDatabase> {

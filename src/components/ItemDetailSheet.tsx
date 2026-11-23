@@ -27,7 +27,7 @@ interface ItemDetailSheetProps {
   onClose: () => void;
   onEdit: (item: BatteryItem) => void;
   onResetCycle: (item: BatteryItem, resetDate: string) => void;
-  onDelete: (id: string) => void;
+  onMoveToTrash: (id: string) => void;
 }
 
 export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
@@ -35,12 +35,11 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
   onClose,
   onEdit,
   onResetCycle,
-  onDelete,
+  onMoveToTrash,
 }) => {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [zoomedPhotoUrl, setZoomedPhotoUrl] = useState<string | null>(null);
   const [resetDate, setResetDate] = useState(getTodayStr());
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const urgency = getUrgencyInfo(item.nextChargeDate);
   const progress = getCycleProgressPercent(item.startDate, item.nextChargeDate);
@@ -109,7 +108,7 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
             {item.photos.length > 0 && activePhoto ? (
               <div className="space-y-2.5">
                 <div
-                  className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer"
+                  className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-900/5 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 cursor-pointer flex items-center justify-center"
                   onClick={() => setZoomedPhotoUrl(activePhoto.dataUrl)}
                 >
                   <img
@@ -117,7 +116,7 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
                     alt={item.name}
                     referrerPolicy="no-referrer"
                     decoding="async"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                   <span className="absolute bottom-2.5 right-2.5 rounded-lg bg-black/65 px-2.5 py-1 text-xs font-medium text-white tabular-nums">
                     {activePhotoIndex + 1} / {item.photos.length}
@@ -131,7 +130,7 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
                         key={photo.id}
                         type="button"
                         onClick={() => setActivePhotoIndex(index)}
-                        className={`relative h-16 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition-all cursor-pointer ${
+                        className={`relative h-16 w-20 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-100 dark:bg-slate-900 transition-all cursor-pointer ${
                           index === activePhotoIndex
                             ? 'border-teal-600 ring-2 ring-teal-500/30'
                             : 'border-slate-200 dark:border-slate-700 opacity-75 hover:opacity-100'
@@ -143,7 +142,7 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
                           referrerPolicy="no-referrer"
                           loading="lazy"
                           decoding="async"
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                         <span className="absolute top-1 left-1 rounded bg-black/65 px-1.5 text-[10px] font-medium text-white tabular-nums">
                           {index + 1}
@@ -269,41 +268,17 @@ export const ItemDetailSheet: React.FC<ItemDetailSheetProps> = ({
             </button>
           </section>
 
-          {/* Delete confirmation inline */}
-          {confirmDelete && (
-            <div className="rounded-2xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                確定要刪除「{item.name}」與所有照片嗎？此動作無法復原。
-              </p>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="flex-1 sm:flex-none min-h-[44px] px-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(item.id)}
-                  className="flex-1 sm:flex-none min-h-[44px] px-4 py-2 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-700 cursor-pointer"
-                >
-                  確認刪除
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Sticky Bottom Action Bar (iOS Thumb-Reach Zone - no corner close buttons) */}
         <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] px-4 pt-3 pb-safe-ios flex items-center justify-between gap-2.5">
           <button
             type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="min-h-[46px] min-w-[46px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+            onClick={() => onMoveToTrash(item.id)}
+            className="min-h-[46px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
           >
             <Trash2 className="h-4 w-4" />
-            <span>刪除</span>
+            <span>移至回收桶</span>
           </button>
 
           <div className="flex items-center gap-2.5 flex-1 justify-end">
