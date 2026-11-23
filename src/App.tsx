@@ -265,7 +265,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F8FA] dark:bg-[#0D1117] text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex flex-col bg-[#EEF2F6] dark:bg-[#0B0F15] text-slate-900 dark:text-slate-100">
       {/* Top Bar: Calm informational header on mobile (NO corner buttons for iOS ergonomics), clean 3-zone bar on desktop */}
       <header className="sticky top-0 z-30 bg-white/85 dark:bg-[#161B22]/85 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 pt-safe-ios">
         <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between gap-8">
@@ -332,87 +332,97 @@ export default function App() {
             正在讀取本機電池與位置記錄...
           </div>
         ) : activeTab === 'inventory' ? (
-          <div className="space-y-5">
-            {/* Summary Strip (Interactive quick-filter cards) */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <button
-                type="button"
-                onClick={() => setFilterScope('overdue')}
-                className={`rounded-2xl border p-3.5 text-left transition-colors cursor-pointer ${
-                  filterScope === 'overdue'
-                    ? 'border-red-500 bg-red-50/70 dark:bg-red-950/35'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-medium text-red-600 dark:text-red-400">已逾期未充</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                  {counts.overdue}
-                </div>
-              </button>
+          <div className="space-y-4">
+            {/* Compact Indented 4-Column Summary Strip */}
+            <section className="px-1">
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFilterScope('overdue')}
+                  className={`rounded-xl border px-2.5 py-2 text-center transition-colors cursor-pointer ${
+                    filterScope === 'overdue'
+                      ? 'border-red-500 bg-rose-50 dark:bg-red-950/40'
+                      : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[11px] font-medium text-red-600 dark:text-red-400 truncate">
+                    已逾期
+                  </div>
+                  <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white tabular-nums leading-tight">
+                    {counts.overdue}
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterScope('due_week')}
-                className={`rounded-2xl border p-3.5 text-left transition-colors cursor-pointer ${
-                  filterScope === 'due_week'
-                    ? 'border-amber-500 bg-amber-50/70 dark:bg-amber-950/35'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-medium text-amber-600 dark:text-amber-400">近週內 (7日)</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                  {counts.due_week}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterScope('due_week')}
+                  className={`rounded-xl border px-2.5 py-2 text-center transition-colors cursor-pointer ${
+                    filterScope === 'due_week'
+                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40'
+                      : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[11px] font-medium text-amber-600 dark:text-amber-400 truncate">
+                    近週內
+                  </div>
+                  <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white tabular-nums leading-tight">
+                    {counts.due_week}
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterScope('due_month')}
-                className={`rounded-2xl border p-3.5 text-left transition-colors cursor-pointer ${
-                  filterScope === 'due_month'
-                    ? 'border-teal-600 bg-teal-50/70 dark:bg-teal-950/35'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-medium text-teal-700 dark:text-teal-400">近月內 (30日)</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                  {counts.due_month}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterScope('due_month')}
+                  className={`rounded-xl border px-2.5 py-2 text-center transition-colors cursor-pointer ${
+                    filterScope === 'due_month'
+                      ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/40'
+                      : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[11px] font-medium text-teal-700 dark:text-teal-400 truncate">
+                    近月內
+                  </div>
+                  <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white tabular-nums leading-tight">
+                    {counts.due_month}
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setFilterScope('all')}
-                className={`rounded-2xl border p-3.5 text-left transition-colors cursor-pointer ${
-                  filterScope === 'all'
-                    ? 'border-slate-900 dark:border-slate-300 bg-slate-100/70 dark:bg-slate-800/70'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">全部管理物件</div>
-                <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-                  {counts.all}
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterScope('all')}
+                  className={`rounded-xl border px-2.5 py-2 text-center transition-colors cursor-pointer ${
+                    filterScope === 'all'
+                      ? 'border-slate-900 dark:border-slate-300 bg-slate-100 dark:bg-slate-800/80'
+                      : 'border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#161B22] hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                    全部
+                  </div>
+                  <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white tabular-nums leading-tight">
+                    {counts.all}
+                  </div>
+                </button>
+              </div>
             </section>
 
-            {/* Search Input & Filter Tabs (placed in comfortable middle reach zone) */}
-            <section className="space-y-3">
-              <div className="relative">
-                <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            {/* Prominent Search Bar & Filter Tabs */}
+            <section className="space-y-2.5">
+              <div className="relative rounded-2xl bg-white dark:bg-[#161B22] border-2 border-teal-500/45 dark:border-teal-600/50 shadow-sm focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-500/20 transition-all">
+                <Search className="h-5 w-5 text-teal-600 dark:text-teal-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="搜尋物件名稱、標籤、放置位置（如：抽屜、書房）、分類..."
-                  className="w-full min-h-[48px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161B22] pl-10 pr-11 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none"
+                  placeholder="搜尋物件名稱、#標籤、放置位置（例：書房、抽屜）..."
+                  className="w-full min-h-[48px] rounded-2xl bg-transparent pl-11 pr-11 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
                     aria-label="清除搜尋"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
                   >
                     <X className="h-4 w-4" />
                   </button>

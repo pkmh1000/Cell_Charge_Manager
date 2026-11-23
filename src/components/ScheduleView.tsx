@@ -127,11 +127,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const renderCompactItemRow = (item: BatteryItem) => {
     const urgency = getUrgencyInfo(item.nextChargeDate, today);
     const cover = item.photos[0]?.thumbDataUrl || item.photos[0]?.dataUrl;
+    const statusTint = {
+      overdue: 'bg-rose-50/85 dark:bg-red-950/25 border-red-200/90 dark:border-red-900/60',
+      due_week: 'bg-amber-50/85 dark:bg-amber-950/25 border-amber-200/90 dark:border-amber-900/50',
+      due_month: 'bg-teal-50/70 dark:bg-teal-950/20 border-teal-200/80 dark:border-teal-900/50',
+      healthy: 'bg-slate-50/90 dark:bg-[#171E29] border-slate-200/90 dark:border-slate-700/80',
+    }[urgency.status];
 
     return (
       <div
         key={item.id}
-        className="flex items-center justify-between gap-3 rounded-2xl bg-white dark:bg-[#161B22] border border-slate-200 dark:border-slate-800 p-3"
+        className={`flex items-center justify-between gap-3 rounded-2xl border p-3 shadow-xs ${statusTint}`}
       >
         <button
           type="button"

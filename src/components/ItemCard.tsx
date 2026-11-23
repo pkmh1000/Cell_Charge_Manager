@@ -32,27 +32,31 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
   const statusConfig = {
     overdue: {
       icon: AlertTriangle,
-      textClass: 'text-red-600 dark:text-red-400',
+      textClass: 'text-red-700 dark:text-red-400',
       barClass: 'bg-red-500',
-      surfaceRing: 'border-red-200/90 dark:border-red-900/60',
+      surfaceRing: 'bg-rose-50/85 dark:bg-red-950/25 border-red-200/90 dark:border-red-900/60',
+      footerBg: 'bg-rose-100/55 dark:bg-red-950/40 border-red-200/70 dark:border-red-900/50',
     },
     due_week: {
       icon: Clock,
-      textClass: 'text-amber-600 dark:text-amber-400',
+      textClass: 'text-amber-700 dark:text-amber-400',
       barClass: 'bg-amber-500',
-      surfaceRing: 'border-amber-200/90 dark:border-amber-900/50',
+      surfaceRing: 'bg-amber-50/85 dark:bg-amber-950/25 border-amber-200/90 dark:border-amber-900/50',
+      footerBg: 'bg-amber-100/50 dark:bg-amber-950/40 border-amber-200/70 dark:border-amber-900/40',
     },
     due_month: {
       icon: Calendar,
       textClass: 'text-teal-700 dark:text-teal-400',
       barClass: 'bg-teal-600',
-      surfaceRing: 'border-slate-200 dark:border-slate-800',
+      surfaceRing: 'bg-teal-50/70 dark:bg-teal-950/20 border-teal-200/80 dark:border-teal-900/50',
+      footerBg: 'bg-teal-100/45 dark:bg-teal-950/35 border-teal-200/60 dark:border-teal-900/40',
     },
     healthy: {
       icon: CheckCircle2,
       textClass: 'text-emerald-700 dark:text-emerald-400',
       barClass: 'bg-emerald-500',
-      surfaceRing: 'border-slate-200 dark:border-slate-800',
+      surfaceRing: 'bg-slate-50/95 dark:bg-[#171E29] border-slate-200/95 dark:border-slate-700/80',
+      footerBg: 'bg-white/75 dark:bg-slate-900/55 border-slate-200/80 dark:border-slate-800',
     },
   }[urgency.status];
 
@@ -60,7 +64,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
 
   return (
     <article
-      className={`group flex flex-col justify-between rounded-2xl bg-white dark:bg-[#161B22] border ${statusConfig.surfaceRing} overflow-hidden transition-transform duration-150`}
+      className={`group flex flex-col justify-between rounded-2xl border shadow-xs ${statusConfig.surfaceRing} overflow-hidden transition-transform duration-150`}
     >
       {/* Main clickable detail area */}
       <button
@@ -141,7 +145,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item, onSelect, onQuickReset
       </button>
 
       {/* Ergonomic Bottom Action Row (away from iOS corners) */}
-      <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80 px-4 py-2.5 bg-slate-50/70 dark:bg-slate-900/40">
+      <div className={`flex items-center justify-between gap-2 border-t px-4 py-2.5 ${statusConfig.footerBg}`}>
         <button
           type="button"
           onClick={() => onSelect(item)}

@@ -48,6 +48,15 @@ function renderScaledDataUrl(
   return canvas.toDataURL(mime, quality);
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('無法讀取圖片檔案'));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function compressImageToPair(
   source: File | string,
   fullMaxDim = 1080,
@@ -55,26 +64,51 @@ export async function compressImageToPair(
   thumbMaxDim = 280,
   thumbQuality = 0.68
 ): Promise<CompressedPhotoPair> {
-  const dataSrc =
-    typeof source === 'string'
-      ? source
-      : await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(new Error('無法讀取圖片檔案'));
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(source);
-        });
+  const isFile = typeof source !== 'string';
+  const objectUrl = isFile ? URL.createObjectURL(source) : null;
+  const imgSrc = objectUrl || (source as string);
 
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onerror = () => reject(new Error('圖片格式無法解析'));
-    img.onload = () => {
-      const full = renderScaledDataUrl(img, fullMaxDim, fullQuality) || dataSrc;
-      const thumb = renderScaledDataUrl(img, thumbMaxDim, thumbQuality) || full;
-      resolve({ dataUrl: full, thumbDataUrl: thumb });
-    };
-    img.src = dataSrc;
-  });
+  try {
+    return await new Promise<CompressedPhotoPair>((resolve, reject) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const full =
+            renderScaledDataUrl(img, fullMaxDim, fullQuality) ||
+            (isFile ? await readFileAsDataUrl(source as File) : (source as string));
+          const thumb = renderScaledDataUrl(img, thumbMaxDim, thumbQuality) || full;
+          resolve({ dataUrl: full, thumbDataUrl: thumb });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = async () => {
+        // Fallback to FileReader if objectURL failed to decode
+        if (isFile) {
+          try {
+            const fallbackDataUrl = await readFileAsDataUrl(source as File);
+            const fallbackImg = new Image();
+            fallbackImg.onload = () => {
+              const full = renderScaledDataUrl(fallbackImg, fullMaxDim, fullQuality) || fallbackDataUrl;
+              const thumb = renderScaledDataUrl(fallbackImg, thumbMaxDim, thumbQuality) || full;
+              resolve({ dataUrl: full, thumbDataUrl: thumb });
+            };
+            fallbackImg.onerror = () => reject(new Error('圖片格式無法解析'));
+            fallbackImg.src = fallbackDataUrl;
+          } catch {
+            reject(new Error('圖片格式無法解析'));
+          }
+        } else {
+          reject(new Error('圖片格式無法解析'));
+        }
+      };
+      img.src = imgSrc;
+    });
+  } finally {
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
 }
 
 export async function urlToDataUrl(url: string): Promise<string> {

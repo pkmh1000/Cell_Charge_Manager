@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Camera,
   ImagePlus,
@@ -9,7 +9,6 @@ import {
   Trash2,
   Undo2,
   X,
-  ZoomIn,
 } from 'lucide-react';
 import { BatteryItem, CycleUnit, DeviceCategory, PhotoEvidence } from '../types/battery';
 import { addInterval, getTodayStr } from '../utils/dateCycle';
@@ -94,6 +93,15 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [intervalError, setIntervalError] = useState<string | null>(null);
 
+  // Press-and-hold drag-to-reorder state
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const draggingIdxRef = useRef<number | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
+  const pointerDownPosRef = useRef<{ x: number; y: number; photoId: string } | null>(null);
+  const preDragSnapshotRef = useRef<FormSnapshot | null>(null);
+  const formRef = useRef<FormSnapshot>(form);
+  formRef.current = form;
+
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -147,28 +155,153 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
     setIntervalError(null);
   };
 
-  const handleFilesSelected = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  useEffect(() => {
+    const clearHoldTimer = () => {
+      if (holdTimerRef.current !== null) {
+        window.clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+    };
+
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      // Cancel pending hold if user is scrolling
+      if (draggingIdxRef.current === null && pointerDownPosRef.current) {
+        const dx = e.clientX - pointerDownPosRef.current.x;
+        const dy = e.clientY - pointerDownPosRef.current.y;
+        if (Math.hypot(dx, dy) > 10) {
+          clearHoldTimer();
+          pointerDownPosRef.current = null;
+        }
+        return;
+      }
+
+      const activeIdx = draggingIdxRef.current;
+      if (activeIdx === null) return;
+
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-photo-idx]');
+      if (!el) return;
+      const targetIdx = Number((el as HTMLElement).dataset.photoIdx);
+      if (Number.isNaN(targetIdx) || targetIdx === activeIdx) return;
+
+      draggingIdxRef.current = targetIdx;
+      setDraggingIdx(targetIdx);
+      setForm((prev) => {
+        if (
+          activeIdx < 0 ||
+          activeIdx >= prev.photos.length ||
+          targetIdx < 0 ||
+          targetIdx >= prev.photos.length
+        ) {
+          return prev;
+        }
+        const reordered = [...prev.photos];
+        const [moved] = reordered.splice(activeIdx, 1);
+        reordered.splice(targetIdx, 0, moved);
+        return { ...prev, photos: reordered };
+      });
+    };
+
+    const handleWindowPointerEnd = () => {
+      clearHoldTimer();
+      const wasDragging = draggingIdxRef.current !== null;
+      const tapMeta = pointerDownPosRef.current;
+      pointerDownPosRef.current = null;
+
+      if (wasDragging) {
+        draggingIdxRef.current = null;
+        setDraggingIdx(null);
+        const beforeSnap = preDragSnapshotRef.current;
+        preDragSnapshotRef.current = null;
+        if (beforeSnap) {
+          const beforeIds = beforeSnap.photos.map((p) => p.id).join(',');
+          const afterIds = formRef.current.photos.map((p) => p.id).join(',');
+          if (beforeIds !== afterIds) {
+            setUndoStack((u) => [...u.slice(-39), beforeSnap]);
+            setRedoStack([]);
+          }
+        }
+      } else if (tapMeta) {
+        // Quick tap without moving or entering drag -> open full-screen view
+        setZoomedPhotoId(tapMeta.photoId);
+      }
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerEnd);
+    window.addEventListener('pointercancel', handleWindowPointerEnd);
+    return () => {
+      clearHoldTimer();
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerEnd);
+      window.removeEventListener('pointercancel', handleWindowPointerEnd);
+    };
+  }, []);
+
+  const handlePhotoPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    index: number,
+    photoId: string
+  ) => {
+    // Ignore if tapping the tiny delete button
+    if ((e.target as HTMLElement).closest('[data-delete-photo]')) return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    pointerDownPosRef.current = { x: e.clientX, y: e.clientY, photoId };
+    if (holdTimerRef.current !== null) {
+      window.clearTimeout(holdTimerRef.current);
+    }
+
+    const delay = e.pointerType === 'mouse' ? 140 : 220;
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      preDragSnapshotRef.current = formRef.current;
+      draggingIdxRef.current = index;
+      setDraggingIdx(index);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate(15);
+        } catch {
+          // ignore
+        }
+      }
+    }, delay);
+  };
+
+  const handleFilesSelected = async (selectedFiles: File[]) => {
+    if (selectedFiles.length === 0) return;
     setIsProcessingPhoto(true);
     setErrorMsg(null);
     try {
+      const results = await Promise.allSettled(
+        selectedFiles.map(async (file, idx) => {
+          const pair = await compressImageToPair(file);
+          return {
+            id: `photo-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+            dataUrl: pair.dataUrl,
+            thumbDataUrl: pair.thumbDataUrl,
+            createdAt: new Date().toISOString(),
+          } satisfies PhotoEvidence;
+        })
+      );
+
       const added: PhotoEvidence[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const pair = await compressImageToPair(file);
-        added.push({
-          id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          dataUrl: pair.dataUrl,
-          thumbDataUrl: pair.thumbDataUrl,
-          createdAt: new Date().toISOString(),
-        });
+      let failedCount = 0;
+      for (const res of results) {
+        if (res.status === 'fulfilled') added.push(res.value);
+        else failedCount++;
       }
-      applyDiscreteChange((prev) => ({
-        ...prev,
-        photos: [...prev.photos, ...added],
-      }));
+
+      if (added.length > 0) {
+        applyDiscreteChange((prev) => ({
+          ...prev,
+          photos: [...prev.photos, ...added],
+        }));
+      }
+      if (failedCount > 0) {
+        setErrorMsg(`有 ${failedCount} 張照片格式無法讀取，其餘 ${added.length} 張已成功加入。`);
+      }
     } catch {
-      setErrorMsg('部分照片讀取失敗，請確認格式為 JPG / PNG / WebP。');
+      setErrorMsg('照片讀取失敗，請確認格式為 JPG / PNG / WebP。');
     } finally {
       setIsProcessingPhoto(false);
     }
@@ -377,8 +510,9 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
               capture="environment"
               className="hidden"
               onChange={(e) => {
-                handleFilesSelected(e.target.files);
+                const files = e.target.files ? Array.from(e.target.files) : [];
                 e.target.value = '';
+                handleFilesSelected(files);
               }}
             />
             <input
@@ -388,8 +522,9 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
               multiple
               className="hidden"
               onChange={(e) => {
-                handleFilesSelected(e.target.files);
+                const files = e.target.files ? Array.from(e.target.files) : [];
                 e.target.value = '';
+                handleFilesSelected(files);
               }}
             />
 
@@ -400,51 +535,60 @@ export const ItemFormSheet: React.FC<ItemFormSheetProps> = ({
             )}
 
             {form.photos.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                {form.photos.map((photo, index) => (
-                  <div
-                    key={photo.id}
-                    className="group relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setZoomedPhotoId(photo.id)}
-                      className="h-full w-full block cursor-pointer"
-                      aria-label={`檢視第 ${index + 1} 張照片全圖`}
-                    >
-                      <img
-                        src={photo.thumbDataUrl || photo.dataUrl}
-                        alt={`照片 ${index + 1}`}
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                        decoding="async"
-                        className="h-full w-full object-cover"
-                      />
-                    </button>
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  點選照片可放大全圖 · 按住照片拖曳可調整前後順序
+                </p>
+                <div
+                  className={`grid grid-cols-3 sm:grid-cols-4 gap-2.5 ${
+                    draggingIdx !== null ? 'touch-none select-none' : ''
+                  }`}
+                >
+                  {form.photos.map((photo, index) => {
+                    const isDragging = draggingIdx === index;
+                    return (
+                      <div
+                        key={photo.id}
+                        data-photo-idx={index}
+                        onPointerDown={(e) => handlePhotoPointerDown(e, index, photo.id)}
+                        style={{ WebkitTouchCallout: 'none' }}
+                        className={`relative aspect-square rounded-xl overflow-hidden border bg-slate-100 dark:bg-slate-900 select-none transition-transform duration-150 cursor-pointer ${
+                          isDragging
+                            ? 'scale-105 border-teal-500 ring-2 ring-teal-500 shadow-lg z-10 opacity-95'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <img
+                          src={photo.thumbDataUrl || photo.dataUrl}
+                          alt={`照片 ${index + 1}`}
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                          decoding="async"
+                          draggable={false}
+                          className="h-full w-full object-cover pointer-events-none select-none"
+                        />
 
-                    <span className="pointer-events-none absolute top-1.5 left-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
-                      {index + 1}
-                    </span>
+                        <span className="pointer-events-none absolute top-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+                          {index + 1}
+                        </span>
 
-                    <button
-                      type="button"
-                      onClick={() => setZoomedPhotoId(photo.id)}
-                      aria-label="放大檢視"
-                      className="absolute bottom-1.5 left-1.5 h-8 w-8 rounded-lg bg-black/60 text-white flex items-center justify-center hover:bg-black/80 cursor-pointer"
-                    >
-                      <ZoomIn className="h-3.5 w-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePhoto(photo.id)}
-                      aria-label="刪除這張照片"
-                      className="absolute bottom-1.5 right-1.5 h-8 w-8 rounded-lg bg-red-600/90 text-white flex items-center justify-center hover:bg-red-700 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+                        <button
+                          type="button"
+                          data-delete-photo="true"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePhoto(photo.id);
+                          }}
+                          aria-label="刪除此照片"
+                          className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600 transition-colors cursor-pointer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </section>
